@@ -4,11 +4,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 const initialStatus = {
   kind: "idle",
-  message: "Drop in a screenshot and the board will pin every cow for you.",
+  message: "Upload a board screenshot and reveal every hidden cow.",
 };
 
 function App() {
-  const [backendReady, setBackendReady] = useState("checking");
+  const [visitCount, setVisitCount] = useState(null);
   const [status, setStatus] = useState(initialStatus);
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
@@ -19,23 +19,32 @@ function App() {
   useEffect(() => {
     let isMounted = true;
 
-    async function pingBackend() {
+    async function registerVisit() {
       try {
-        const response = await fetch(`${API_BASE_URL}/healthz`);
-        if (!response.ok) {
-          throw new Error("Health check failed.");
+        const sessionKey = "xiaoxiaoniu-visit-registered";
+        const hasTrackedInSession = window.sessionStorage.getItem(sessionKey) === "1";
+        if (!hasTrackedInSession) {
+          window.sessionStorage.setItem(sessionKey, "1");
         }
+        const response = await fetch(`${API_BASE_URL}/api/site-visits`, {
+          method: hasTrackedInSession ? "GET" : "POST",
+        });
+        if (!response.ok) {
+          throw new Error("Visit counter request failed.");
+        }
+        const payload = await response.json();
         if (isMounted) {
-          setBackendReady("ready");
+          setVisitCount(payload?.data?.total_visits ?? null);
         }
       } catch {
+        window.sessionStorage.removeItem("xiaoxiaoniu-visit-registered");
         if (isMounted) {
-          setBackendReady("down");
+          setVisitCount(null);
         }
       }
     }
 
-    pingBackend();
+    registerVisit();
 
     return () => {
       isMounted = false;
@@ -67,7 +76,7 @@ function App() {
       setResult(null);
       setStatus({
         kind: "ready",
-        message: `${file.name} loaded. Ready to scan the board.`,
+        message: `${file.name} is ready. Scan the board when you want.`,
       });
     });
   }
@@ -86,10 +95,10 @@ function App() {
     formData.append("file", selectedFile);
 
     setIsSubmitting(true);
-    setStatus({
-      kind: "loading",
-      message: "Scanning colored cells and plotting the herd...",
-    });
+      setStatus({
+        kind: "loading",
+        message: "Reading the board and pinning the herd...",
+      });
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/solve`, {
@@ -106,7 +115,7 @@ function App() {
         setResult(payload.data);
         setStatus({
           kind: "success",
-          message: `Solved ${payload.data.board.cows.length} cows on a ${payload.data.board.grid_size}×${payload.data.board.grid_size} board.`,
+          message: `Found ${payload.data.board.cows.length} cows on this board.`,
         });
       });
     } catch (error) {
@@ -134,28 +143,23 @@ function App() {
       <div className="ambient ambient-right" aria-hidden="true" />
       <header className="hero-panel">
         <div className="hero-copy reveal reveal-1">
-          <p className="eyebrow">XiaoxiaoNiu Tactical Board</p>
-          <h1>
-            Upload the board.
-            <br />
-            Watch the herd appear.
-          </h1>
-          <p className="hero-text">
-            A playful React console for the FastAPI solver. Drop in a screenshot and every cow gets
-            pinned back onto the image with board coordinates and clean overlay markers.
-          </p>
-        </div>
-
-        <div className="hero-aside reveal reveal-2">
-          <StatusPill backendReady={backendReady} />
-          <div className="legend-card">
-            <span className="legend-title">Workflow</span>
-            <ol>
-              <li>Upload a screenshot.</li>
-              <li>Send it to the backend solver.</li>
-              <li>Read cow pins directly on the board.</li>
-            </ol>
+          <div className="brand-row">
+            <div className="brand-mark" aria-hidden="true">
+              🐮
+            </div>
+            <div className="brand-copy">
+              <p className="eyebrow">XiaoxiaoNiu</p>
+              <strong>Tactical Board</strong>
+            </div>
+            <div className="hero-status-wrap">
+              <VisitCounter count={visitCount} />
+            </div>
           </div>
+          <h1>Find every hidden cow in one pass.</h1>
+          <p className="hero-text">
+            Turn a puzzle screenshot into a clean, confident answer. Upload the board and see every
+            cow appear exactly where it belongs.
+          </p>
         </div>
       </header>
 
@@ -213,7 +217,7 @@ function App() {
           </article>
 
           <div className="metric-strip">
-            <Metric label="Backend" value={backendReady === "ready" ? "Ready" : backendReady === "down" ? "Offline" : "Checking"} />
+            <Metric label="Visits" value={formatVisitCount(visitCount)} />
             <Metric label="Pinned" value={String(cows.length).padStart(2, "0")} />
             <Metric label="Grid" value={result ? `${result.board.grid_size}×${result.board.grid_size}` : "--"} />
           </div>
@@ -305,16 +309,20 @@ function Metric({ label, value }) {
   );
 }
 
-function StatusPill({ backendReady }) {
-  const tone = backendReady === "ready" ? "ready" : backendReady === "down" ? "down" : "checking";
-  const text = backendReady === "ready" ? "Backend linked" : backendReady === "down" ? "Backend offline" : "Backend checking";
-
+function VisitCounter({ count }) {
   return (
-    <div className={`status-pill status-pill-${tone}`}>
-      <span className="status-dot" />
-      <span>{text}</span>
+    <div className="visit-counter">
+      <span className="visit-counter-label">Visits</span>
+      <strong>{formatVisitCount(count)}</strong>
     </div>
   );
+}
+
+function formatVisitCount(count) {
+  if (typeof count !== "number") {
+    return "—";
+  }
+  return count.toLocaleString("en-US");
 }
 
 function rectStyleFromNormalized(rect) {

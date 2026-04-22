@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from threading import Lock
 from typing import Literal
 
 from fastapi import FastAPI, File, UploadFile
@@ -95,6 +98,52 @@ class SolveErrorResponse(BaseModel):
     error: ErrorDetailModel
 
 
+class VisitCounterDataModel(BaseModel):
+    total_visits: int
+
+
+class VisitCounterResponse(BaseModel):
+    ok: Literal[True] = True
+    data: VisitCounterDataModel
+
+
+class VisitCounterStore:
+    def __init__(self, file_path: Path) -> None:
+        self.file_path = file_path
+        self._lock = Lock()
+
+    def read_total(self) -> int:
+        with self._lock:
+            return self._read_payload()["total_visits"]
+
+    def increment(self) -> int:
+        with self._lock:
+            payload = self._read_payload()
+            payload["total_visits"] += 1
+            self._write_payload(payload)
+            return payload["total_visits"]
+
+    def _read_payload(self) -> dict[str, int]:
+        if not self.file_path.exists():
+            return {"total_visits": 0}
+
+        try:
+            payload = json.loads(self.file_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {"total_visits": 0}
+
+        total_visits = payload.get("total_visits", 0)
+        if not isinstance(total_visits, int) or total_visits < 0:
+            total_visits = 0
+        return {"total_visits": total_visits}
+
+    def _write_payload(self, payload: dict[str, int]) -> None:
+        self.file_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+
 app = FastAPI(title="XiaoxiaoNiu API", version="0.1.0")
 
 app.add_middleware(
@@ -106,11 +155,22 @@ app.add_middleware(
 )
 
 solver = XiaoxiaoNiuCowFinder()
+counter_store = VisitCounterStore(Path(__file__).with_name("page_metrics.json"))
 
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/site-visits", response_model=VisitCounterResponse)
+async def get_site_visits() -> VisitCounterResponse:
+    return VisitCounterResponse(data=VisitCounterDataModel(total_visits=counter_store.read_total()))
+
+
+@app.post("/api/site-visits", response_model=VisitCounterResponse)
+async def register_site_visit() -> VisitCounterResponse:
+    return VisitCounterResponse(data=VisitCounterDataModel(total_visits=counter_store.increment()))
 
 
 @app.post(
