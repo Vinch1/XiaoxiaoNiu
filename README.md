@@ -1,100 +1,81 @@
 # XiaoxiaoNiu
-Computer vision approach to solve TikTok game "XiaoxiaoNiu"
 
-## Usage
+Computer-vision and puzzle-solving project for the TikTok game "XiaoxiaoNiu".
+
+This repository now contains:
+
+- a Python solver that parses a screenshot, rebuilds the board, and finds every cow
+- a FastAPI backend that accepts uploaded screenshots and returns frontend-ready overlay data
+- a React frontend that uploads screenshots and renders animated cow markers directly on top of the image
+
+## How It Works
+
+The system is split into two stages:
+
+1. Vision parsing
+   - detect colored board cells from the screenshot
+   - infer the square grid layout
+   - sample each cell color
+   - quantize the board into a 2D color-id array
+
+2. Constraint solving
+   - exactly one cow per row
+   - exactly one cow per column
+   - exactly one cow per connected color region
+   - cows cannot touch in the 8-neighborhood
+
+The backend returns both board coordinates and image overlay coordinates, so the frontend can draw the result directly on the uploaded screenshot.
+
+## Project Structure
+
+```text
+Backend/
+  api.py                  FastAPI app
+  xiaoxiaoniu_solver.py   Vision parser + puzzle solver
+  data/                   Example screenshots
+
+Frontend/
+  src/App.jsx             Main React UI
+  src/styles.css          Visual system and animations
+  vite.config.js          Dev proxy to FastAPI backend
+
+pyproject.toml            Python dependencies managed by uv
+uv.lock                   Locked Python dependency graph
+```
+
+## Quick Start
+
+Run backend and frontend in separate terminals.
+
+### 1. Start the Backend
 
 ```bash
+cd XiaoxiaoNiu
 uv sync
-uv run python Backend/xiaoxiaoniu_solver.py Backend/data/1.jpeg
 uv run uvicorn Backend.api:app --reload
-cd Frontend
+```
+
+Backend default address:
+
+- `http://127.0.0.1:8000`
+
+### 2. Start the Frontend
+
+```bash
+cd XiaoxiaoNiu/Frontend
 npm install
 npm run dev
 ```
 
-## React Frontend
+Frontend default address:
 
-The React client lives in `Frontend/` and is designed for the overlay workflow:
+- `http://127.0.0.1:5173`
 
-- upload a screenshot
-- send it to `POST /api/solve`
-- preview the original screenshot
-- place animated cow markers using normalized coordinates from the backend
+In development, Vite proxies `/api` and `/healthz` to the backend automatically.
 
-Frontend notes:
-
-- Vite dev server runs on `http://127.0.0.1:5173`
-- backend requests proxy to `http://127.0.0.1:8000` in development
-- set `VITE_API_BASE_URL` if you want to call a different backend directly
-
-FastAPI endpoints:
-
-- `GET /healthz`: health check.
-- `POST /api/solve`: upload a screenshot with multipart field name `file`, returns frontend-ready overlay data.
-
-Core entrypoint:
-
-- `XiaoxiaoNiuCowFinder.solve_image_async(image_path)`: async parse a screenshot and return all cow positions.
-- `XiaoxiaoNiuCowFinder.solve_image_bytes_async(image_bytes)`: async parse uploaded image bytes and return all cow positions.
-- `XiaoxiaoNiuCowFinder.solve_grid_async(color_grid)`: async solve directly from a square 2D color-id array.
-- `XiaoxiaoNiuCowFinder.solve_image(image_path)`: parse a screenshot and return all cow positions.
-- `XiaoxiaoNiuCowFinder.solve_image_bytes(image_bytes)`: parse uploaded image bytes and return all cow positions.
-- `XiaoxiaoNiuCowFinder.solve_grid(color_grid)`: solve directly from a square 2D color-id array.
-
-Main exception base class:
-
-- `XiaoxiaoNiuError`: catch this in application code to handle image loading, board detection/parsing, invalid board, and no-solution failures.
-
-Example request:
+If you want the frontend to call a different backend directly, set:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/solve \
-  -F "file=@Backend/data/1.jpeg"
+VITE_API_BASE_URL=http://your-host:8000
 ```
 
-Response data model for frontend:
-
-- `ok`: whether the request succeeded.
-- `data.image.size_px`: original uploaded image width and height.
-- `data.board.bounding_box_px`: board rectangle in original image pixels.
-- `data.board.bounding_box_normalized`: board rectangle normalized to the original image size.
-- `data.board.cows[].center_px`: cow center in original image pixels.
-- `data.board.cows[].center_normalized`: cow center normalized to the original image size.
-- `data.board.cows[].row` / `col`: one-based board coordinates, useful for textual labels.
-- `data.board.cows[].row_index` / `col_index`: zero-based board coordinates, useful for array indexing.
-- `data.debug.color_grid` / `region_grid`: optional debug data for development.
-
-Example success payload:
-
-```json
-{
-  "ok": true,
-  "data": {
-    "image": {
-      "filename": "1.jpeg",
-      "size_px": { "width": 896, "height": 1792 }
-    },
-    "board": {
-      "grid_size": 6,
-      "bounding_box_px": { "x": 99.0, "y": 658.17, "width": 730.0, "height": 730.0 },
-      "bounding_box_normalized": { "x": 0.110491, "y": 0.367282, "width": 0.814732, "height": 0.407366 },
-      "cell_size_px": 112.0,
-      "cows": [
-        {
-          "index": 0,
-          "row_index": 0,
-          "col_index": 2,
-          "row": 1,
-          "col": 3,
-          "center_px": { "x": 401.88, "y": 714.17 },
-          "center_normalized": { "x": 0.448527, "y": 0.398533 }
-        }
-      ]
-    },
-    "debug": {
-      "color_grid": [[0, 0, 1, 2, 2, 2]],
-      "region_grid": [[0, 0, 1, 2, 2, 2]]
-    }
-  }
-}
-```
