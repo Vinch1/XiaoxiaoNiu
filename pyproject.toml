@@ -1,0 +1,17 @@
+[project]
+name = "xiaoxiaoniu"
+version = "0.1.0"
+description = "Computer-vision solver for the XiaoxiaoNiu puzzle."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.116.0",
+    "httpx>=0.28.0",
+    "numpy>=2.3.0",
+    "pillow>=11.0.0",
+    "python-multipart>=0.0.20",
+    "uvicorn>=0.35.0",
+]
+
+[tool.uv]
+package = false
