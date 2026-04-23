@@ -79,3 +79,6 @@ If you want the frontend to call a different backend directly, set:
 VITE_API_BASE_URL=http://your-host:8000
 ```
 
+## Test Image
+
+![Test Image](Backend/data/1.jpeg)
