@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import asyncio
-import json
 import os
 from pathlib import Path
 from threading import Lock
 from typing import Literal
 
-import httpx
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from Backend.xiaoxiaoniu_solver import (
@@ -111,106 +109,18 @@ class VisitCounterResponse(BaseModel):
 
 
 class VisitCounterStore:
-    async def read_total(self) -> int:
-        raise NotImplementedError
-
-    async def increment(self) -> int:
-        raise NotImplementedError
-
-
-class FileVisitCounterStore(VisitCounterStore):
-    def __init__(self, file_path: Path) -> None:
-        self.file_path = file_path
+    def __init__(self) -> None:
         self._lock = Lock()
+        self._total_visits = 0
 
     async def read_total(self) -> int:
-        return await asyncio.to_thread(self._read_total_sync)
+        with self._lock:
+            return self._total_visits
 
     async def increment(self) -> int:
-        return await asyncio.to_thread(self._increment_sync)
-
-    def _read_total_sync(self) -> int:
         with self._lock:
-            return self._read_payload()["total_visits"]
-
-    def _increment_sync(self) -> int:
-        with self._lock:
-            payload = self._read_payload()
-            payload["total_visits"] += 1
-            self._write_payload(payload)
-            return payload["total_visits"]
-
-    def _read_payload(self) -> dict[str, int]:
-        if not self.file_path.exists():
-            return {"total_visits": 0}
-
-        try:
-            payload = json.loads(self.file_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return {"total_visits": 0}
-
-        total_visits = payload.get("total_visits", 0)
-        if not isinstance(total_visits, int) or total_visits < 0:
-            total_visits = 0
-        return {"total_visits": total_visits}
-
-    def _write_payload(self, payload: dict[str, int]) -> None:
-        self.file_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-
-
-class RedisVisitCounterStore(VisitCounterStore):
-    def __init__(self, rest_url: str, rest_token: str, key: str = "site_visits") -> None:
-        self.rest_url = rest_url.rstrip("/")
-        self.rest_token = rest_token
-        self.key = key
-
-    async def read_total(self) -> int:
-        payload = await self._request("GET", f"/get/{self.key}")
-        return self._coerce_result(payload.get("result"))
-
-    async def increment(self) -> int:
-        payload = await self._request("POST", f"/incr/{self.key}")
-        return self._coerce_result(payload.get("result"))
-
-    async def _request(self, method: str, path: str) -> dict[str, object]:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.request(
-                method,
-                f"{self.rest_url}{path}",
-                headers={"Authorization": f"Bearer {self.rest_token}"},
-            )
-        response.raise_for_status()
-        payload = response.json()
-        if "error" in payload:
-            raise RuntimeError(str(payload["error"]))
-        return payload
-
-    @staticmethod
-    def _coerce_result(value: object) -> int:
-        if value is None:
-            return 0
-        if isinstance(value, int):
-            return value
-        if isinstance(value, str):
-            try:
-                return int(value)
-            except ValueError:
-                return 0
-        return 0
-
-
-def _build_visit_counter_store() -> VisitCounterStore:
-    rest_url = os.getenv("UPSTASH_REDIS_REST_URL")
-    rest_token = os.getenv("UPSTASH_REDIS_REST_TOKEN")
-    key = os.getenv("SITE_VISITS_KEY", "site_visits")
-
-    if rest_url and rest_token:
-        return RedisVisitCounterStore(rest_url=rest_url, rest_token=rest_token, key=key)
-
-    return FileVisitCounterStore(Path(__file__).with_name("page_metrics.json"))
+            self._total_visits += 1
+            return self._total_visits
 
 
 app = FastAPI(title="XiaoxiaoNiu API", version="0.1.0")
@@ -223,8 +133,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+frontend_dist_dir = Path(__file__).resolve().parent.parent / "Frontend" / "dist"
+if os.getenv("SERVE_FRONTEND_STATIC") == "1" and frontend_dist_dir.exists():
+    app.mount("/", StaticFiles(directory=str(frontend_dist_dir), html=True), name="static")
+
 solver = XiaoxiaoNiuCowFinder()
-counter_store = _build_visit_counter_store()
+counter_store = VisitCounterStore()
 
 
 @app.get("/healthz")

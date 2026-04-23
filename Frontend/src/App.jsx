@@ -244,7 +244,6 @@ function App() {
           </article>
 
           <div className="metric-strip">
-            <Metric label="Visits" value={formatVisitCount(visitCount)} />
             <Metric label="Pinned" value={String(cows.length).padStart(2, "0")} />
             <Metric label="Grid" value={result ? `${result.board.grid_size}×${result.board.grid_size}` : "--"} />
           </div>
