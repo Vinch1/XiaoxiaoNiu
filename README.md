@@ -81,4 +81,4 @@ VITE_API_BASE_URL=http://your-host:8000
 
 ## Test Image
 
-![Test Image](Backend/data/1.jpeg)
+![Test Image](Backend/data/3.png)
