@@ -499,13 +499,16 @@ body::before {
 
 .cow-pin {
   position: absolute;
-  display: grid;
-  place-items: center;
+  width: 0;
+  height: 0;
   transform: translate(-50%, -50%);
   animation: pin-enter 560ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
 }
 
 .cow-pin-core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
   width: 16px;
   height: 16px;
   border-radius: 50%;
@@ -513,10 +516,13 @@ body::before {
   box-shadow:
     0 0 0 8px rgba(221, 108, 66, 0.17),
     0 10px 18px rgba(70, 31, 17, 0.35);
+  transform: translate(-50%, -50%);
 }
 
 .cow-pin-tag {
-  margin-top: 10px;
+  position: absolute;
+  left: 50%;
+  top: 18px;
   padding: 6px 9px;
   border-radius: 999px;
   background: rgba(28, 53, 38, 0.86);
@@ -524,6 +530,8 @@ body::before {
   font-size: 0.74rem;
   font-family: "IBM Plex Mono", monospace;
   letter-spacing: 0.08em;
+  white-space: nowrap;
+  transform: translateX(-50%);
 }
 
 .empty-stage {
