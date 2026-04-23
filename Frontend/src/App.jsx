@@ -9,45 +9,72 @@ const initialStatus = {
 
 function App() {
   const [visitCount, setVisitCount] = useState(null);
+  const [visitCountFlash, setVisitCountFlash] = useState(false);
   const [status, setStatus] = useState(initialStatus);
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [result, setResult] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef(null);
+  const previousVisitCountRef = useRef(null);
 
   useEffect(() => {
     let isMounted = true;
+    let pollTimerId;
+    let animationTimerId;
 
-    async function registerVisit() {
+    async function syncVisitCount(method) {
       try {
-        const sessionKey = "xiaoxiaoniu-visit-registered";
-        const hasTrackedInSession = window.sessionStorage.getItem(sessionKey) === "1";
-        if (!hasTrackedInSession) {
-          window.sessionStorage.setItem(sessionKey, "1");
-        }
         const response = await fetch(`${API_BASE_URL}/api/site-visits`, {
-          method: hasTrackedInSession ? "GET" : "POST",
+          method,
         });
         if (!response.ok) {
           throw new Error("Visit counter request failed.");
         }
         const payload = await response.json();
+        const nextCount = payload?.data?.total_visits ?? null;
         if (isMounted) {
-          setVisitCount(payload?.data?.total_visits ?? null);
+          if (
+            typeof nextCount === "number" &&
+            typeof previousVisitCountRef.current === "number" &&
+            nextCount > previousVisitCountRef.current
+          ) {
+            setVisitCountFlash(true);
+            window.clearTimeout(animationTimerId);
+            animationTimerId = window.setTimeout(() => {
+              setVisitCountFlash(false);
+            }, 900);
+          }
+          previousVisitCountRef.current = nextCount;
+          setVisitCount(nextCount);
         }
       } catch {
-        window.sessionStorage.removeItem("xiaoxiaoniu-visit-registered");
         if (isMounted) {
           setVisitCount(null);
         }
       }
     }
 
-    registerVisit();
+    async function registerInitialVisit() {
+      const sessionKey = "xiaoxiaoniu-visit-registered";
+      const shouldProtectDevDoubleCount = import.meta.env.DEV;
+      const hasTrackedInSession =
+        shouldProtectDevDoubleCount && window.sessionStorage.getItem(sessionKey) === "1";
+      if (shouldProtectDevDoubleCount && !hasTrackedInSession) {
+        window.sessionStorage.setItem(sessionKey, "1");
+      }
+      await syncVisitCount(hasTrackedInSession ? "GET" : "POST");
+    }
+
+    registerInitialVisit();
+    pollTimerId = window.setInterval(() => {
+      syncVisitCount("GET");
+    }, 10_000);
 
     return () => {
       isMounted = false;
+      window.clearInterval(pollTimerId);
+      window.clearTimeout(animationTimerId);
     };
   }, []);
 
@@ -95,10 +122,10 @@ function App() {
     formData.append("file", selectedFile);
 
     setIsSubmitting(true);
-      setStatus({
-        kind: "loading",
-        message: "Reading the board and pinning the herd...",
-      });
+    setStatus({
+      kind: "loading",
+      message: "Reading the board and pinning the herd...",
+    });
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/solve`, {
@@ -152,7 +179,7 @@ function App() {
               <strong>Tactical Board</strong>
             </div>
             <div className="hero-status-wrap">
-              <VisitCounter count={visitCount} />
+              <VisitCounter count={visitCount} isAnimated={visitCountFlash} />
             </div>
           </div>
           <h1>Find every hidden cow in one pass.</h1>
@@ -309,9 +336,9 @@ function Metric({ label, value }) {
   );
 }
 
-function VisitCounter({ count }) {
+function VisitCounter({ count, isAnimated }) {
   return (
-    <div className="visit-counter">
+    <div className={`visit-counter${isAnimated ? " visit-counter-animated" : ""}`}>
       <span className="visit-counter-label">Visits</span>
       <strong>{formatVisitCount(count)}</strong>
     </div>
