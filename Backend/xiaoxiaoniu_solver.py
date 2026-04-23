@@ -60,9 +60,9 @@ class XiaoxiaoNiuCowFinder:
     def __init__(
         self,
         saturation_threshold: float = 0.25,
-        min_component_area: int = 10_000,
-        min_cell_side: int = 90,
-        max_cell_side: int = 130,
+        min_component_area: int = 1_200,
+        min_cell_side: int = 30,
+        max_cell_side: int = 160,
         color_distance_threshold: float = 32.0,
     ) -> None:
         self.saturation_threshold = saturation_threshold
@@ -220,7 +220,12 @@ class XiaoxiaoNiuCowFinder:
         rgb = image_rgb.astype(np.float32) / 255.0
         channel_max = rgb.max(axis=2)
         channel_min = rgb.min(axis=2)
-        saturation = np.where(channel_max == 0.0, 0.0, (channel_max - channel_min) / channel_max)
+        saturation = np.divide(
+            channel_max - channel_min,
+            channel_max,
+            out=np.zeros_like(channel_max),
+            where=channel_max != 0.0,
+        )
         mask = saturation >= self.saturation_threshold
 
         height, width = mask.shape
@@ -288,11 +293,11 @@ class XiaoxiaoNiuCowFinder:
     def _infer_grid_centers(
         self, boxes: Sequence[tuple[int, int, int, int, float, float, int]]
     ) -> tuple[list[float], list[float], int]:
-        cell_side = int(round(float(np.median([box[6] for box in boxes]))))
+        dominant_boxes, cell_side = self._select_dominant_cell_size(boxes)
         merge_threshold = cell_side * 0.6
 
-        x_groups = self._cluster_1d([box[4] for box in boxes], merge_threshold)
-        y_groups = self._cluster_1d([box[5] for box in boxes], merge_threshold)
+        x_groups = self._cluster_1d([box[4] for box in dominant_boxes], merge_threshold)
+        y_groups = self._cluster_1d([box[5] for box in dominant_boxes], merge_threshold)
 
         x_centers = [self._mean(group) for group in x_groups if len(group) >= 2]
         y_centers = [self._mean(group) for group in y_groups if len(group) >= 2]
@@ -306,6 +311,27 @@ class XiaoxiaoNiuCowFinder:
             raise BoardParsingError("Failed to infer a valid square board from the image.")
 
         return x_centers, y_centers, cell_side
+
+    def _select_dominant_cell_size(
+        self, boxes: Sequence[tuple[int, int, int, int, float, float, int]]
+    ) -> tuple[list[tuple[int, int, int, int, float, float, int]], int]:
+        if not boxes:
+            raise BoardParsingError("Failed to infer a valid square board from the image.")
+
+        size_values = [box[6] for box in boxes]
+        size_threshold = max(4.0, float(np.median(size_values)) * 0.12)
+        size_groups = self._cluster_1d(size_values, size_threshold)
+        dominant_group = max(size_groups, key=len)
+        dominant_size = int(round(self._mean(dominant_group)))
+
+        filtered_boxes = [
+            box for box in boxes if abs(box[6] - dominant_size) <= size_threshold
+        ]
+        if len(filtered_boxes) < 4:
+            filtered_boxes = list(boxes)
+            dominant_size = int(round(float(np.median(size_values))))
+
+        return filtered_boxes, dominant_size
 
     def _sample_cell_colors(
         self,

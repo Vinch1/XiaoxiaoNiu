@@ -134,8 +134,6 @@ app.add_middleware(
 )
 
 frontend_dist_dir = Path(__file__).resolve().parent.parent / "Frontend" / "dist"
-if os.getenv("SERVE_FRONTEND_STATIC") == "1" and frontend_dist_dir.exists():
-    app.mount("/", StaticFiles(directory=str(frontend_dist_dir), html=True), name="static")
 
 solver = XiaoxiaoNiuCowFinder()
 counter_store = VisitCounterStore()
@@ -252,3 +250,7 @@ def _error_response(error_type: ErrorType, message: str) -> JSONResponse:
             },
         },
     )
+
+
+if os.getenv("SERVE_FRONTEND_STATIC") == "1" and frontend_dist_dir.exists():
+    app.mount("/", StaticFiles(directory=str(frontend_dist_dir), html=True), name="static")
