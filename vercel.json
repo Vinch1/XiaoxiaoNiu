@@ -1,0 +1,11 @@
+{
+  "builds": [
+    { "src": "api/index.py", "use": "@vercel/python" },
+    { "src": "Frontend/package.json", "use": "@vercel/static-build" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/index.py" },
+    { "src": "/healthz", "dest": "/api/index.py" },
+    { "src": "/(.*)", "dest": "/Frontend/$1" }
+  ]
+}
