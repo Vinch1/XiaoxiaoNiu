@@ -4,8 +4,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 const initialStatus = {
   kind: "idle",
-  message: "Upload a board screenshot and reveal every hidden cow.",
+  message: "Upload a screenshot to reveal the hidden cows.",
 };
+
+const COW_DROP_STAGGER_MS = 120;
+const COW_DROP_VARIATION_MS = 24;
 
 function App() {
   const [visitCount, setVisitCount] = useState(null);
@@ -99,10 +102,10 @@ function App() {
     startTransition(() => {
       setSelectedFile(file);
       setResult(null);
-      setStatus({
-        kind: "ready",
-        message: `${file.name} is ready. Scan the board when you want.`,
-      });
+        setStatus({
+          kind: "ready",
+          message: `${file.name} is ready. Click "Reveal All Cows" to solve.`,
+        });
     });
   }
 
@@ -122,7 +125,7 @@ function App() {
     setIsSubmitting(true);
     setStatus({
       kind: "loading",
-      message: "Reading the board and pinning the herd...",
+      message: "Reading the board and finding the hidden cows...",
     });
 
     try {
@@ -140,7 +143,7 @@ function App() {
         setResult(payload.data);
         setStatus({
           kind: "success",
-          message: `Found ${payload.data.board.cows.length} cows on this board.`,
+          message: `${payload.data.board.cows.length} hidden cows have been revealed.`,
         });
       });
     } catch (error) {
@@ -164,26 +167,21 @@ function App() {
 
   return (
     <div className="app-shell">
-      <div className="ambient ambient-left" aria-hidden="true" />
-      <div className="ambient ambient-right" aria-hidden="true" />
       <header className="hero-panel">
         <div className="hero-copy reveal reveal-1">
           <div className="brand-row">
-            <div className="brand-mark" aria-hidden="true">
-              🐮
-            </div>
+            <div className="brand-mark" aria-hidden="true">🐮</div>
             <div className="brand-copy">
               <p className="eyebrow">XiaoxiaoNiu</p>
-              <strong>Tactical Board</strong>
+              <strong>Cow Finder</strong>
             </div>
             <div className="hero-status-wrap">
               <VisitCounter count={visitCount} isAnimated={visitCountFlash} />
             </div>
           </div>
-          <h1>Find every hidden cow in one pass.</h1>
+          <h1>Find every hidden cow.</h1>
           <p className="hero-text">
-            Turn a puzzle screenshot into a clean, confident answer. Upload the board and see every
-            cow appear exactly where it belongs.
+            Upload a XiaoxiaoNiu screenshot and instantly reveal all hidden cow positions on the board.
           </p>
         </div>
       </header>
@@ -191,8 +189,8 @@ function App() {
       <main className="workspace">
         <section className="control-panel reveal reveal-2">
           <div className="panel-header">
-            <p className="panel-kicker">Mission Input</p>
-            <h2>Field Upload</h2>
+            <p className="panel-kicker">Upload</p>
+            <h2>Upload Screenshot</h2>
           </div>
 
           <form className="uploader" onSubmit={handleSubmit}>
@@ -205,16 +203,16 @@ function App() {
             />
 
             <button className="dropzone" type="button" onClick={triggerFilePicker}>
-              <span className="dropzone-icon">✦</span>
+              <span className="dropzone-icon">📤</span>
               <span className="dropzone-label">
-                {selectedFile ? selectedFile.name : "Choose screenshot"}
+                {selectedFile ? selectedFile.name : "Upload a screenshot"}
               </span>
-              <span className="dropzone-hint">JPEG, PNG or any image the backend can decode</span>
+              <span className="dropzone-hint">Supports PNG, JPG</span>
             </button>
 
             <div className="action-row">
               <button className="primary-button" type="submit" disabled={!selectedFile || isSubmitting}>
-                {isSubmitting ? "Scanning..." : "Find All Cows"}
+                {isSubmitting ? "Revealing..." : "Reveal All Cows"}
               </button>
               <button
                 className="secondary-button"
@@ -242,14 +240,14 @@ function App() {
           </article>
 
           <div className="metric-strip">
-            <Metric label="Pinned" value={String(cows.length).padStart(2, "0")} />
-            <Metric label="Grid" value={result ? `${result.board.grid_size}×${result.board.grid_size}` : "--"} />
+            <Metric label="Revealed" value={String(cows.length).padStart(2, "0")} />
+            <Metric label="Board" value={result ? `${result.board.grid_size}×${result.board.grid_size}` : "--"} />
           </div>
         </section>
 
         <section className="viewer-panel reveal reveal-3">
           <div className="panel-header">
-            <p className="panel-kicker">Overlay View</p>
+            <p className="panel-kicker">Preview</p>
             <h2>Board Preview</h2>
           </div>
 
@@ -263,17 +261,17 @@ function App() {
                       className="board-outline"
                       style={rectStyleFromNormalized(result.board.bounding_box_normalized)}
                     />
-                    {result.board.cows.map((cow, index) => (
+                    {result.board.cows.map((cow) => (
                       <div
                         key={`${cow.row_index}-${cow.col_index}`}
                         className="cow-pin"
                         style={{
                           left: `${cow.center_normalized.x * 100}%`,
                           top: `${cow.center_normalized.y * 100}%`,
-                          animationDelay: `${index * 80}ms`,
+                          animationDelay: `${getCowDropDelay(cow)}ms`,
                         }}
                       >
-                        <span className="cow-pin-core" />
+                        <span className="cow-pin-icon" aria-hidden="true">🐮</span>
                         <span className="cow-pin-tag">{cow.row},{cow.col}</span>
                       </div>
                     ))}
@@ -282,8 +280,9 @@ function App() {
               </div>
             ) : (
               <div className="empty-stage">
-                <span className="empty-stage-mark">牧</span>
-                <p>Upload a screenshot to preview the tactical overlay.</p>
+                <span className="empty-stage-icon" aria-hidden="true">🖼️</span>
+                <p>Upload a screenshot to preview the board.</p>
+                <span>The board image and cow positions will appear here.</span>
               </div>
             )}
           </div>
@@ -291,8 +290,8 @@ function App() {
 
         <section className="results-panel reveal reveal-4">
           <div className="panel-header">
-            <p className="panel-kicker">Resolved Positions</p>
-            <h2>Herd Ledger</h2>
+            <p className="panel-kicker">Results</p>
+            <h2>Results</h2>
           </div>
 
           <div className="cow-list">
@@ -301,9 +300,7 @@ function App() {
                 <article className="cow-row" key={`${cow.row_index}-${cow.col_index}`}>
                   <span className="cow-index">{String(index + 1).padStart(2, "0")}</span>
                   <div className="cow-meta">
-                    <p>
-                      Row {cow.row}, Col {cow.col}
-                    </p>
+                    <p>Row {cow.row}, Col {cow.col}</p>
                     <p className="cow-coords">
                       x {cow.center_px.x.toFixed(2)} / y {cow.center_px.y.toFixed(2)}
                     </p>
@@ -313,8 +310,8 @@ function App() {
               ))
             ) : (
               <div className="empty-list">
-                <p>No cows pinned yet.</p>
-                <span>The backend result will populate this ledger automatically.</span>
+                <p>No results yet.</p>
+                <span>Upload and solve a board to see cow positions here.</span>
               </div>
             )}
           </div>
@@ -340,6 +337,10 @@ function VisitCounter({ count, isAnimated }) {
       <strong>{formatVisitCount(count)}</strong>
     </div>
   );
+}
+
+function getCowDropDelay(cow) {
+  return cow.row_index * COW_DROP_STAGGER_MS + (cow.col_index % 3) * COW_DROP_VARIATION_MS;
 }
 
 function formatVisitCount(count) {
