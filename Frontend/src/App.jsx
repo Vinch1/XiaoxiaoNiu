@@ -57,10 +57,8 @@ function App() {
 
     async function registerInitialVisit() {
       const sessionKey = "xiaoxiaoniu-visit-registered";
-      const shouldProtectDevDoubleCount = import.meta.env.DEV;
-      const hasTrackedInSession =
-        shouldProtectDevDoubleCount && window.sessionStorage.getItem(sessionKey) === "1";
-      if (shouldProtectDevDoubleCount && !hasTrackedInSession) {
+      const hasTrackedInSession = window.sessionStorage.getItem(sessionKey) === "1";
+      if (!hasTrackedInSession) {
         window.sessionStorage.setItem(sessionKey, "1");
       }
       await syncVisitCount(hasTrackedInSession ? "GET" : "POST");
